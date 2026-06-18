@@ -12,13 +12,14 @@ import config from "../configs/config.js";
 
 const cookieOptions = {
   httpOnly: true,
-  secure: true
+  secure: true,
+  sameSite: "strict"
 }
 
 // Sign-up Inputs Validation Using zod
 const signupSchema = z.object({
-  fullName: z.string(),
-  email: z.email(),
+  fullName: z.string().trim().min(1, "Full name is required"),
+  email: z.email().transform(email => email.trim().toLowerCase()),
   password: z
     .string()
     .min(6, "The password should be of atleast 6 characters")
@@ -45,8 +46,10 @@ export const signup = async (req, res) => {
       })
   }
 
+  const { email, fullName, password } = parsed.data
+
   try {
-    const userAlreadyExists = await userModel.findOne({ email: parsed.data.email })
+    const userAlreadyExists = await userModel.findOne({ email })
     if (userAlreadyExists) {
       return res.status(409).json({
         msg: "User Already Exists"
@@ -54,24 +57,30 @@ export const signup = async (req, res) => {
 
     }
 
-    const newUser = await userModel.create({
-      fullName: parsed.data.fullName,
-      email: parsed.data.email,
-      password: parsed.data.password
-    })
 
+
+    await otpModel.deleteMany({
+      email,
+    });
 
     const otp = generateOTP()
-    await sendRegistrationEmail(newUser.email, newUser.fullName, otp)
-
     const otpHash = await bcrypt.hash(otp, 8)
-    console.log(otpHash);
+
+    
+    const newUser = await userModel.create({
+      fullName,
+      email,
+      password
+    })
 
     await otpModel.create({
-      email: newUser.email,
-      userId: newUser._id,
+      email,
       otpHash
     })
+
+    await sendRegistrationEmail(email, fullName, otp)
+
+
 
     const response = newUser.toObject()
     delete response.password
@@ -84,29 +93,49 @@ export const signup = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       msg: "Failed To Create User",
-      error
+      error:error.message
     })
   }
 }
 
 
+//otp input validations using zod
+const verifyEmailSchema = z.object({
+  email: z.email().transform(email => email.trim().toLowerCase()),
+  otp: z.string().length(6, "The OTP is A Six Digit Number Please Enter Correct OTP")
+})
+
 // User Email Verfication Controller
 export const verifyEmail = async (req, res) => {
 
   try {
-    const { otp, email } = req.body
-    const otpDoc = await otpModel.findOne({ email })
-    console.log(otpDoc);
-    const otpHash = await bcrypt.compare(otp, otpDoc.otpHash)
-    console.log(otpHash);
+    const parsed = verifyEmailSchema.safeParse(req.body)
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({
+          msg: parsed.error.issues[0].message
+        })
+    }
 
+    const { email, otp } = parsed.data
+
+    const otpDoc = await otpModel.findOne({ email })
+    if (!otpDoc) {
+      return res.status(404).json({
+        msg: "OTP not found or expired"
+      })
+    }
+
+    const otpHash = await bcrypt.compare(otp, otpDoc.otpHash)
     if (!otpHash) {
       return res.status(400).json({
         msg: "Invalid otp"
       })
     }
 
-    await userModel.findByIdAndUpdate(otpDoc.userId, {
+
+    await userModel.findOneAndUpdate({ email: otpDoc.email }, {
       verified: true
     })
 
@@ -121,17 +150,29 @@ export const verifyEmail = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       msg: "Server Error",
-      error
+      error:error.message
     })
   }
 }
 
-
+//login input validations using zod
+const loginSchema = z.object({
+  email: z.email().transform(email => email.trim().toLowerCase()),
+  password: z.string()
+})
 
 // User Log-in Controller
 export const login = async (req, res) => {
-  const { email, password } = req.body
+  const parsed = loginSchema.safeParse(req.body)
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({
+        msg: parsed.error.issues[0].message
+      })
+  }
 
+  const { email, password } = parsed.data
   try {
     const user = await userModel.findOne({ email })
     if (!user) {
@@ -140,12 +181,18 @@ export const login = async (req, res) => {
       })
     }
 
+    if (!user.verified) {
+      return res.status(403).json({
+        msg: "Please verify your email first"
+      })
+    }
+
     const passwordMatch = await bcrypt.compare(password, user.password)
     if (!passwordMatch) return res.status(403).json({
       msg: "Incorrect Password"
     })
 
-    const {accessToken,refreshToken} = await generateAccessAndRefreshTokens(user._id)
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
 
 
     const updatedUser = await userModel.findOneAndUpdate(
@@ -167,7 +214,7 @@ export const login = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       msg: "Failed To Login",
-      error
+      error:error.message
     })
   }
 }
@@ -180,7 +227,7 @@ export const logout = async (req, res) => {
     await userModel.findByIdAndUpdate(user._id, {
       $unset:
       {
-        refreshToken: null
+        refreshToken: ""
       }
     }, {
       returnDocument: "after",
@@ -198,7 +245,7 @@ export const logout = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       msg: "Failed to LogOut",
-      error
+      error:error.message
     })
   }
 
@@ -228,29 +275,29 @@ export const refreshAccessToken = async (req, res) => {
     }
 
     const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
-   
-    await userModel.findByIdAndUpdate({
-      _id: user._id
-    }, {
+
+    await userModel.findByIdAndUpdate(
+     user._id
+    , {
       $set: {
-        refreshToken: refreshToken
+        refreshToken
       }
     }, {
       returnDocument: "after",
       runValidators: false
     })
-    
+
     return res
-    .status(200)
-    .cookie("accessToken", accessToken, cookieOptions)
-    .cookie("refreshToken", refreshToken, cookieOptions)
-    .json({
-      msg: "Access Token Refreshed"
-    })
+      .status(200)
+      .cookie("accessToken", accessToken, cookieOptions)
+      .cookie("refreshToken", refreshToken, cookieOptions)
+      .json({
+        msg: "Access Token Refreshed"
+      })
   } catch (error) {
     return res.status(401).json({
       msg: "Invalid Refresh Token",
-      error
+      error:error.message
     })
   }
 }

@@ -1,4 +1,4 @@
-import mongoose, { model } from "mongoose";
+import mongoose from "mongoose";
 
 const otpSchema = new mongoose.Schema({
   email:{
@@ -6,14 +6,17 @@ const otpSchema = new mongoose.Schema({
     index:true,
     required:true
   },
-  userId:{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User"
-  },
   otpHash:{
     type:String,
     required:true
   }
+},{
+  timestamps:true
 })
+
+otpSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: 300 }
+);
 
 export const otpModel = mongoose.model("otp",otpSchema)

@@ -6,7 +6,7 @@ export async function generateAccessToken(userId) {
     _id: userId,
   }, config.ACCESS_JWT_SECRET,
     {
-      expiresIn: "1min"
+      expiresIn: "15min"
     }
 
   )
