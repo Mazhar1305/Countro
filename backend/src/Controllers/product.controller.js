@@ -7,7 +7,7 @@ export const createProduct = async (req, res) => {
     const { productName, serialNumber, quantity } = req.body
 
     const productAlreadyExists = await productModel.findOne({
-      serialNumber
+      serialNumber,
     })
 
     if (productAlreadyExists) {
@@ -125,8 +125,11 @@ export const updateProductById = async (req, res) => {
       product: updatedProduct,
     });
   } catch (error) {
-    console.error(error);
-
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        msg: error.message,
+      });
+    }
     return res.status(500).json({
       msg: "Failed To Update Product",
       error: error.message,
