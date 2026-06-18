@@ -1,14 +1,14 @@
 import { Router } from "express";
 import { verifyJWT } from "../Middlewares/auth.middleware.js";
-import { createProduct, deleteProductById, getAllPorducts, getPorductById, updateProductById } from "../Controllers/product.controller.js";
+import { createProduct, deleteProductById, getAllProducts, getProductById, updateProductById } from "../Controllers/product.controller.js";
 
 const productRouter = Router()
 
 
 productRouter.use(verifyJWT)
 productRouter.post('/createProduct',createProduct)
-productRouter.get('/getAllProducts',getAllPorducts)
-productRouter.get('/getProductById/:id',getPorductById)
+productRouter.get('/getAllProducts',getAllProducts)
+productRouter.get('/getProductById/:id',getProductById)
 productRouter.put('/updateProductById/:id',updateProductById)
 productRouter.delete('/deleteProductById/:id',deleteProductById)
 

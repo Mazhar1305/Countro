@@ -6,19 +6,34 @@ export const createProduct = async (req, res) => {
   try {
     const { productName, serialNumber, quantity } = req.body
 
+    if(!productName?.trim() || !serialNumber?.trim() || quantity === undefined){
+      return res.status(400).json({
+         msg:"All fields are required"
+      })
+   }
+
+   if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({
+      msg: "Quantity must be greater than 0",
+    });
+  }
+
     const productAlreadyExists = await productModel.findOne({
-      serialNumber,
+      serialNumber:serialNumber.trim().toUpperCase(),
+      user:req.user._id
     })
 
     if (productAlreadyExists) {
       const updatedProduct = await productModel.findByIdAndUpdate(productAlreadyExists._id, {
-        quantity: productAlreadyExists.quantity + quantity
+        $inc: {
+          quantity: quantity
+        }
       },{
         returnDocument:"after",
-        runValidators:false
+        runValidators:true
       })
       
-      res.status(201).json({
+      return res.status(200).json({
         msg: "Product Already Existed Updated the Quantity",
         product: updatedProduct
       })
@@ -32,11 +47,16 @@ export const createProduct = async (req, res) => {
       })
 
       res.status(201).json({
-        msg: "Porduct Created Successfully",
+        msg: "Product Created Successfully",
         product
       })
     }
   } catch (error) {
+    if(error.name === "ValidationError"){
+      return res.status(400).json({
+         msg:error.message
+      })
+   }
     return res.status(500).json({
       msg: "Failed To Create Product",
       error: error.message
@@ -46,21 +66,21 @@ export const createProduct = async (req, res) => {
 
 }
 
-export const getAllPorducts = async (req, res) => {
+export const getAllProducts = async (req, res) => {
   try {
-    const allPorducts = await productModel.find({
+    const allProducts = await productModel.find({
       user: req.user._id
     })
 
-    if (!allPorducts || allPorducts.length === 0) {
-      res.status(200).json({
+    if (!allProducts || allProducts.length === 0) {
+      return res.status(200).json({
         msg: "No Products Found",
       })
     }
 
     res.status(200).json({
       msg: "All Products Fetched Successfully",
-      allPorducts
+      allProducts
     })
   } catch (error) {
     return res.status(500).json({
@@ -71,18 +91,19 @@ export const getAllPorducts = async (req, res) => {
 }
 
 
-export const getPorductById = async (req, res) => {
+export const getProductById = async (req, res) => {
 
  try {
    const productId = req.params.id
 
    const product = await productModel.findOne({
-    serialNumber:productId
+    serialNumber:productId.trim().toUpperCase(),
+    user:req.user._id
    })
 
    if(!product){
     return res.status(404).json({
-      msg:`No Porduct Found With ID: ${productId}`
+      msg:`No Product Found With ID: ${productId}`
     })
    }
 
@@ -92,7 +113,7 @@ export const getPorductById = async (req, res) => {
    })
    
  } catch (error) {
-  res.status(500).json({
+  return res.status(500).json({
     msg:"Failed To Fetch Product",
     error: error.message
   })
@@ -103,8 +124,28 @@ export const updateProductById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if(Object.keys(req.body).length === 0){
+      return res.status(400).json({
+         msg:"No fields provided for update"
+      })
+   }
+
+   if (
+    req.body.quantity !== undefined &&
+    (!Number.isInteger(req.body.quantity) || req.body.quantity <= 0)
+  ) {
+    return res.status(400).json({
+      msg: "Quantity must be greater than 0",
+    });
+  }
+
+   delete req.body.user;
+
     const updatedProduct = await productModel.findOneAndUpdate(
-      { serialNumber: id },
+      { 
+        serialNumber: id.trim().toUpperCase(),
+        user:req.user._id
+       },
       {
         $set: req.body,
       },
@@ -141,7 +182,8 @@ export const deleteProductById = async (req, res) => {
    try {
     const {id} = req.params
     const product = await productModel.findOneAndDelete({
-      serialNumber:id
+      serialNumber:id.trim().toUpperCase(),
+      user:req.user._id
     })
 
     if (!product) {
