@@ -46,7 +46,7 @@ export const createProduct = async (req, res) => {
         quantity
       })
 
-      res.status(201).json({
+      return res.status(201).json({
         msg: "Product Created Successfully",
         product
       })
@@ -78,7 +78,7 @@ export const getAllProducts = async (req, res) => {
       })
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       msg: "All Products Fetched Successfully",
       allProducts
     })
@@ -107,7 +107,7 @@ export const getProductById = async (req, res) => {
     })
    }
 
-   res.status(200).json({
+   return res.status(200).json({
     msg:"Product Fecthed Successfully",
     product
    })
@@ -192,7 +192,7 @@ export const deleteProductById = async (req, res) => {
       })
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       msg:"Product Deleted Successfully"
     })
     

@@ -76,7 +76,7 @@ export const signup = async (req, res) => {
     const response = newUser.toObject()
     delete response.password
 
-    res.status(201).json({
+    return res.status(201).json({
       msg: "user created",
       user: response,
     })
@@ -114,7 +114,7 @@ export const verifyEmail = async (req, res) => {
       email: otpDoc.email
     })
 
-    res.json({
+    return res.status(200).json({
       msg: "User Verified"
     })
 
@@ -154,7 +154,7 @@ export const login = async (req, res) => {
       { returnDocument: "after", runValidators: false }
     ).select("-password -refreshToken")
 
-    res
+    return res
       .status(200)
       .cookie("accessToken", accessToken, cookieOptions)
       .cookie("refreshToken", refreshToken, cookieOptions)
@@ -188,7 +188,7 @@ export const logout = async (req, res) => {
     })
 
 
-    res
+    return res
       .status(200)
       .clearCookie("accessToken", cookieOptions)
       .clearCookie("refreshToken", cookieOptions)
@@ -229,14 +229,6 @@ export const refreshAccessToken = async (req, res) => {
 
     const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
    
-    res
-    .status(200)
-    .cookie("accessToken", accessToken, cookieOptions)
-    .cookie("refreshToken", refreshToken, cookieOptions)
-    .json({
-      msg: "Access Token Refreshed"
-    })
-    
     await userModel.findByIdAndUpdate({
       _id: user._id
     }, {
@@ -246,6 +238,14 @@ export const refreshAccessToken = async (req, res) => {
     }, {
       returnDocument: "after",
       runValidators: false
+    })
+    
+    return res
+    .status(200)
+    .cookie("accessToken", accessToken, cookieOptions)
+    .cookie("refreshToken", refreshToken, cookieOptions)
+    .json({
+      msg: "Access Token Refreshed"
     })
   } catch (error) {
     return res.status(401).json({
