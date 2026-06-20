@@ -26,7 +26,7 @@ export const createProduct = async (req, res) => {
     if (productAlreadyExists) {
       const updatedProduct = await productModel.findByIdAndUpdate(productAlreadyExists._id, {
         $inc: {
-          quantity: quantity
+          quantity: Number.parseInt(quantity)
         }
       },{
         returnDocument:"after",
@@ -43,7 +43,7 @@ export const createProduct = async (req, res) => {
         user: user._id,
         productName,
         serialNumber,
-        quantity
+        quantity:Number.parseInt(quantity)
       })
 
       return res.status(201).json({
