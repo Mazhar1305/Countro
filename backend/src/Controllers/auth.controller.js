@@ -7,7 +7,7 @@ import sendRegistrationEmail from "../Services/email.service.js"
 import { otpModel } from "../Models/otp.model.js";
 import jwt from "jsonwebtoken"
 import config from "../configs/config.js";
-
+import { OAuth2Client } from "google-auth-library"
 
 
 const cookieOptions = {
@@ -15,6 +15,12 @@ const cookieOptions = {
   secure: true,
   sameSite: "strict"
 }
+
+
+const client = new OAuth2Client(
+  config.GOOGLE_CLIENT_ID
+);
+
 
 // Sign-up Inputs Validation Using zod
 const signupSchema = z.object({
@@ -48,6 +54,7 @@ export const signup = async (req, res) => {
 
   const { email, fullName, password } = parsed.data
 
+
   try {
     const userAlreadyExists = await userModel.findOne({ email })
     if (userAlreadyExists) {
@@ -66,12 +73,13 @@ export const signup = async (req, res) => {
     const otp = generateOTP()
     const otpHash = await bcrypt.hash(otp, 8)
 
-    
+
     const newUser = await userModel.create({
       fullName,
       email,
-      password
-    })
+      password,
+      authProvider: "local",
+    });
 
     await otpModel.create({
       email,
@@ -93,7 +101,7 @@ export const signup = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       msg: "Failed To Create User",
-      error:error.message
+      error: error.message
     })
   }
 }
@@ -150,7 +158,7 @@ export const verifyEmail = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       msg: "Server Error",
-      error:error.message
+      error: error.message
     })
   }
 }
@@ -187,6 +195,12 @@ export const login = async (req, res) => {
       })
     }
 
+    if (user.authProvider !== "local") {
+      return res.status(400).json({
+        msg: "This account uses Google Sign-In"
+      });
+    }
+
     const passwordMatch = await bcrypt.compare(password, user.password)
     if (!passwordMatch) return res.status(403).json({
       msg: "Incorrect Password"
@@ -214,7 +228,7 @@ export const login = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       msg: "Failed To Login",
-      error:error.message
+      error: error.message
     })
   }
 }
@@ -245,7 +259,7 @@ export const logout = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       msg: "Failed to LogOut",
-      error:error.message
+      error: error.message
     })
   }
 
@@ -277,12 +291,12 @@ export const refreshAccessToken = async (req, res) => {
     const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
 
     await userModel.findByIdAndUpdate(
-     user._id
-    , {
-      $set: {
-        refreshToken
-      }
-    }, {
+      user._id
+      , {
+        $set: {
+          refreshToken
+        }
+      }, {
       returnDocument: "after",
       runValidators: false
     })
@@ -297,7 +311,83 @@ export const refreshAccessToken = async (req, res) => {
   } catch (error) {
     return res.status(401).json({
       msg: "Invalid Refresh Token",
-      error:error.message
+      error: error.message
     })
   }
 }
+
+
+// Controller For Login With Google
+export const googleLogin = async (req, res) => {
+
+  try {
+
+    const { token } = req.body;
+
+    const ticket =
+      await client.verifyIdToken({
+        idToken: token,
+        audience:
+          config.GOOGLE_CLIENT_ID,
+      });
+
+    const payload = ticket.getPayload();
+
+    const {email,name,sub,} = payload;
+
+    let user = await userModel.findOne({
+      email,
+    });
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
+
+
+    if (!user) {
+      user = await userModel.create({
+        fullName: name,
+        email,
+        googleId: sub,
+        verified: true,
+        authProvider: "google",
+        refreshToken
+      });
+    } else {
+      user = await userModel.findByIdAndUpdate(
+        user._id,
+        {
+          $set: {
+            authProvider:"both",
+            googleId: sub,
+          },
+        },
+        {
+          returnDocument: "after",
+          runValidators: false,
+        }
+      ).select("-password -refreshToken -googleId");
+    }
+
+
+    return res
+      .cookie(
+        "accessToken",
+        accessToken,
+        cookieOptions
+      )
+      .cookie(
+        "refreshToken",
+        refreshToken,
+        cookieOptions
+      )
+      .json({
+        msg: "Logged-In Suucessfully",
+        success: true,
+        user,
+      });
+  } catch (error) {
+    return res.status(401).json({
+      msg: "Google Login Failed",
+      error: error.message
+    });
+  }
+};

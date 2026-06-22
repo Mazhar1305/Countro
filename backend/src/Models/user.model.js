@@ -15,9 +15,16 @@ const userSchema = new Schema({
     unique:true,
     trim:true
   },
+  authProvider: {
+    type: String,
+    enum: ["local", "google","both"],
+    default: "local"
+  },
   password:{
     type:String,
-    required:true
+    required: function () {
+      return this.authProvider?.local;
+    }
   },
   refreshToken:{
     type:String,
@@ -25,7 +32,14 @@ const userSchema = new Schema({
   verified:{
     type:Boolean,
     default:false
-  }
+  },
+ 
+  googleId: {
+    type:String,
+    default:null
+  },
+
+
 },{timestamps:true})
 
 
